@@ -1,0 +1,28 @@
+/**
+ *******************************************************************************
+ * @file      : ins_all.hpp
+ * @brief     : Instance 层总入口
+ * @history   :
+ *  Version     Date            Author          Note
+ *  V0.9.0      yyyy-mm-dd      <author>        1. <note>
+ *******************************************************************************
+ * @attention :
+ *******************************************************************************
+ *  Copyright (c) 2024 Hello World Team, Zhejiang University.
+ *  All Rights Reserved.
+ *******************************************************************************
+ */
+/* Define to prevent recursive inclusion -------------------------------------*/
+#ifndef INSTANCE_INS_ALL_HPP_
+#define INSTANCE_INS_ALL_HPP_
+
+/* Includes ------------------------------------------------------------------*/
+#include "ins_comm.hpp"
+#include "ins_filter.hpp"
+#include "ins_imu.hpp"
+#include "ins_motor.hpp"
+#include "ins_pid.hpp"
+#include "ins_rc.hpp"
+#include "ins_robot.hpp"
+
+#endif /* INSTANCE_INS_ALL_HPP_ */
