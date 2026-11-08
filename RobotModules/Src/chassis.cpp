@@ -14,6 +14,9 @@
  */
 /* Includes ------------------------------------------------------------------*/
 #include "chassis.hpp"
+
+#include "pid.hpp"
+#include "td.hpp"
 /* Private macro -------------------------------------------------------------*/
 /* Private constants ---------------------------------------------------------*/
 /* Private types -------------------------------------------------------------*/
@@ -48,6 +51,25 @@
  *   - 所有数学写在纸上推导清楚再上代码，符号错误会直接导致翻车。
  * ==========================================================================*/
 
+namespace {
+
+constexpr float kRotateStickTrigger = 0.8f;   // 右摇杆触发阈值
+constexpr float kRotateStickRelease = 0.6f;   // 右摇杆回差释放阈值
+constexpr float kRotateSpeedStep = 4.0f;      // 每次步进速度，单位 rad/s
+constexpr float kRotateSpeedLimit = 35.0f;    // 旋转目标速度限幅，单位 rad/s
+
+float ClampSym(float value, float limit) {
+  if (value > limit) {
+    return limit;
+  }
+  if (value < -limit) {
+    return -limit;
+  }
+  return value;
+}
+
+}  // namespace
+
 namespace robot {
 
 void Chassis::update() {
@@ -61,7 +83,10 @@ void Chassis::update() {
       motor_rotate_ == nullptr || motor_rotate_->isOffline();
   if (any_offline) {
     reset();  // 任一电机掉线：清空控制状态
+    return;
   }
+
+  updateRotateRef();  // 更新旋转目标速度
 }
 
 void Chassis::run() {
@@ -73,10 +98,10 @@ void Chassis::run() {
     return;
   }
 
-  left_cmd_ = 0.0f;    // 控制算法未接入，非待机也先零输出
-  right_cmd_ = 0.0f;   // 右轮零输出
-  rotate_cmd_ = 0.0f;  // 旋转电机零输出
-  applyCmd();          // 安全下发
+  left_cmd_ = 0.0f;   // 轮组 LQR 未接入，先零输出
+  right_cmd_ = 0.0f;  // 右轮零输出
+  runRotate();        // 旋转电机速度闭环
+  applyCmd();         // 安全下发
 }
 
 void Chassis::standby() {
@@ -95,9 +120,18 @@ void Chassis::reset() {
   zero_once_left_ = true;  // 复位后首帧先发零
   zero_once_right_ = true;
   zero_once_rotate_ = true;
-  rc_lv_ = 0.0f;           // 清零遥控输入
+  rc_lv_ = 0.0f;              // 清零遥控输入
   rc_lh_ = 0.0f;
   rc_rh_ = 0.0f;
+  rotate_speed_ref_ = 0.0f;   // 清空旋转目标速度
+  rc_rh_high_ = false;        // 清空右摇杆正向触发锁存
+  rc_rh_low_ = false;         // 清空右摇杆负向触发锁存
+  if (pid_rotate_ != nullptr) {
+    pid_rotate_->reset();     // 复位旋转速度环 PID
+  }
+  if (filter_rotate_ != nullptr) {
+    filter_rotate_->reset();  // 复位速度反馈滤波器
+  }
 }
 
 void Chassis::registerMotorLeft(hw_motor::Motor* motor) {
@@ -113,6 +147,20 @@ void Chassis::registerMotorRotate(hw_motor::Motor* motor) {
 }
 
 void Chassis::registerImu(hello_world::imu::Imu* imu) { imu_ = imu; }
+
+void Chassis::registerPid(hw_pid::Pid* pid) {
+  pid_rotate_ = pid;  // 保存旋转速度环 PID
+  if (pid_rotate_ != nullptr) {
+    pid_rotate_->reset();  // 注册时先清空 PID 状态
+  }
+}
+
+void Chassis::registerFilter(hw_filter::Td* filter) {
+  filter_rotate_ = filter;  // 保存旋转速度反馈滤波器
+  if (filter_rotate_ != nullptr) {
+    filter_rotate_->reset();  // 注册时先清空滤波器状态
+  }
+}
 
 void Chassis::setRcInput(float lv, float lh, float rh) {
   rc_lv_ = lv;  // 左摇杆纵向
@@ -136,6 +184,59 @@ bool Chassis::isAllMotorsOnline() {
          !motor_right_->isOffline() && !motor_rotate_->isOffline();
 }
 
+bool Chassis::isRotateEnabled() const {
+  return working_mode_ != WorkingMode::kStandby;  // 当前按 3.4：非待机均允许旋转
+}
+
+void Chassis::updateRotateRef() {
+  if (!isRotateEnabled()) {
+    rotate_speed_ref_ = 0.0f;  // 待机或禁用旋转时目标清零
+    rc_rh_high_ = false;
+    rc_rh_low_ = false;
+    return;
+  }
+
+  if (!rc_rh_high_ && rc_rh_ > kRotateStickTrigger) {
+    rotate_speed_ref_ += kRotateSpeedStep;  // 正向一次步进
+    rc_rh_high_ = true;
+  } else if (rc_rh_ < kRotateStickRelease) {
+    rc_rh_high_ = false;  // 回差释放，允许下次触发
+  }
+
+  if (!rc_rh_low_ && rc_rh_ < -kRotateStickTrigger) {
+    rotate_speed_ref_ -= kRotateSpeedStep;  // 负向一次步进
+    rc_rh_low_ = true;
+  } else if (rc_rh_ > -kRotateStickRelease) {
+    rc_rh_low_ = false;  // 回差释放，允许下次触发
+  }
+
+  rotate_speed_ref_ = ClampSym(rotate_speed_ref_, kRotateSpeedLimit);  // 目标限幅
+}
+
+void Chassis::runRotate() {
+  const bool rotate_ready =
+      isRotateEnabled() && motor_rotate_ != nullptr && pid_rotate_ != nullptr &&
+      !motor_rotate_->isOffline();
+
+  if (!rotate_ready) {
+    rotate_cmd_ = 0.0f;  // 不可用时零输出
+    if (pid_rotate_ != nullptr) {
+      pid_rotate_->reset();  // 复位 PID
+    }
+    if (filter_rotate_ != nullptr) {
+      filter_rotate_->reset();  // 复位滤波器
+    }
+    return;
+  }
+
+  float speed_fdb = motor_rotate_->vel();  // 旋转电机反馈速度
+  if (filter_rotate_ != nullptr) {
+    speed_fdb = filter_rotate_->update(speed_fdb);  // 速度反馈滤波
+  }
+
+  rotate_cmd_ = pid_rotate_->update(rotate_speed_ref_, speed_fdb);  // 速度环输出
+}
+
 void Chassis::applyCmd() {
   const bool any_offline =
       motor_left_ == nullptr || motor_left_->isOffline() ||
@@ -148,6 +249,12 @@ void Chassis::applyCmd() {
     zero_once_left_ = true;    // 恢复后首帧仍为零
     zero_once_right_ = true;
     zero_once_rotate_ = true;
+    if (pid_rotate_ != nullptr) {
+      pid_rotate_->reset();    // 掉线时复位旋转 PID
+    }
+    if (filter_rotate_ != nullptr) {
+      filter_rotate_->reset(); // 掉线时复位速度滤波
+    }
   }
 
   applyMotorCmd(motor_left_, left_cmd_, zero_once_left_);         // 左轮安全下发

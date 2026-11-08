@@ -24,8 +24,10 @@
 #include "ins_robot.hpp"
 #include "chassis.hpp"
 #include "robot.hpp"
+#include "ins_filter.hpp"
 #include "ins_imu.hpp"
 #include "ins_motor.hpp"
+#include "ins_pid.hpp"
 #include "ins_rc.hpp"
 /* Private macro -------------------------------------------------------------*/
 /* Private constants ---------------------------------------------------------*/
@@ -66,6 +68,8 @@ robot::Robot* CreateRobot(void) {
     chassis.registerMotorRight(CreateMotorRight());
     chassis.registerMotorRotate(CreateMotorRotate());
     chassis.registerImu(imu);
+    chassis.registerPid(CreatePidMotorRotate());
+    chassis.registerFilter(CreateTdSpeedZ());
 
     robot.registerChassis(&chassis);
     robot.registerImu(imu);

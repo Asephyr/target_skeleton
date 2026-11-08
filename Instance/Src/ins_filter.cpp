@@ -14,12 +14,24 @@
  */
 /* Includes ------------------------------------------------------------------*/
 #include "ins_filter.hpp"
+
+#include "td.hpp"
 /* Private macro -------------------------------------------------------------*/
 /* Private constants ---------------------------------------------------------*/
 /* Private types -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
 /* External variables --------------------------------------------------------*/
 /* Private function prototypes -----------------------------------------------*/
+namespace {
+
+hw_filter::Td::Config MakeFilterConfig() {
+  hw_filter::Td::Config config;
+  config.cutoff_hz = 50.0f;  // 截止频率，先取 50Hz，实车再调
+  config.dt = 0.001f;        // 采样周期 1ms
+  return config;
+}
+
+}  // namespace
 /* Exported function definitions ---------------------------------------------*/
 hw_filter::Td *CreateTdSpeedZ(void) {
   /* TODO【新人任务】:
@@ -36,6 +48,7 @@ hw_filter::Td *CreateTdSpeedZ(void) {
    *   - 滤波在底盘的速度环里使用（电机反馈本身不再挂滤波器）。
    *   - 不使用滤波器时可以返回 nullptr，底盘直接使用电机原始反馈速度。
    */
-  return nullptr;
+  static hw_filter::Td filter(MakeFilterConfig());  // 旋转速度反馈滤波单例
+  return &filter;
 }
 /* Private function definitions ----------------------------------------------*/

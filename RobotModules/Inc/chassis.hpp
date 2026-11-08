@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include <cstdint>
 
+#include "ins_filter.hpp"
 #include "ins_imu.hpp"
 #include "ins_motor.hpp"
 #include "ins_pid.hpp"
@@ -74,6 +75,8 @@ class Chassis {
   void registerMotorRight(hw_motor::Motor* motor);
   void registerMotorRotate(hw_motor::Motor* motor);
   void registerImu(hello_world::imu::Imu* imu);
+  void registerPid(hw_pid::Pid* pid);          // 注册旋转速度环 PID
+  void registerFilter(hw_filter::Td* filter);  // 注册旋转速度反馈滤波器
 
   void setWorkingMode(WorkingMode mode);
   WorkingMode workingMode() const;
@@ -83,11 +86,13 @@ class Chassis {
   void applyCmd();
 
  private:
-  hw_motor::Motor* motor_left_ = nullptr;
-  hw_motor::Motor* motor_right_ = nullptr;
-  hw_motor::Motor* motor_rotate_ = nullptr;
-  hello_world::imu::Imu* imu_ = nullptr;
-  WorkingMode working_mode_ = WorkingMode::kStandby;
+  hw_motor::Motor* motor_left_ = nullptr;         // 左轮电机
+  hw_motor::Motor* motor_right_ = nullptr;        // 右轮电机
+  hw_motor::Motor* motor_rotate_ = nullptr;       // 旋转电机
+  hello_world::imu::Imu* imu_ = nullptr;          // IMU
+  hw_pid::Pid* pid_rotate_ = nullptr;             // 旋转速度环 PID
+  hw_filter::Td* filter_rotate_ = nullptr;        // 旋转速度反馈滤波器
+  WorkingMode working_mode_ = WorkingMode::kStandby;  // 当前工作模式
 
   float left_cmd_ = 0.0f;          // 左轮输出指令
   float right_cmd_ = 0.0f;         // 右轮输出指令
@@ -98,7 +103,13 @@ class Chassis {
   float rc_lv_ = 0.0f;             // 左摇杆纵向输入
   float rc_lh_ = 0.0f;             // 左摇杆横向输入
   float rc_rh_ = 0.0f;             // 右摇杆横向输入
+  float rotate_speed_ref_ = 0.0f;  // 旋转目标速度，单位 rad/s
+  bool rc_rh_high_ = false;        // 右摇杆正向已触发
+  bool rc_rh_low_ = false;         // 右摇杆负向已触发
 
+  void updateRotateRef();          // 右摇杆边沿步进
+  void runRotate();                // 旋转电机速度闭环
+  bool isRotateEnabled() const;    // 当前模式是否允许旋转
   void applyMotorCmd(hw_motor::Motor* motor, float cmd, bool& zero_once);  // 单电机安全下发
 };
 
