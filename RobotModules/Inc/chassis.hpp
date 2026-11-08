@@ -77,6 +77,7 @@ class Chassis {
 
   void setWorkingMode(WorkingMode mode);
   WorkingMode workingMode() const;
+  void setRcInput(float lv, float lh, float rh);  // 下发过死区后的遥控输入
 
   bool isAllMotorsOnline();
   void applyCmd();
@@ -94,6 +95,9 @@ class Chassis {
   bool zero_once_left_ = true;     // 左轮恢复/切换后首帧先发零
   bool zero_once_right_ = true;    // 右轮恢复/切换后首帧先发零
   bool zero_once_rotate_ = true;   // 旋转电机恢复/切换后首帧先发零
+  float rc_lv_ = 0.0f;             // 左摇杆纵向输入
+  float rc_lh_ = 0.0f;             // 左摇杆横向输入
+  float rc_rh_ = 0.0f;             // 右摇杆横向输入
 
   void applyMotorCmd(hw_motor::Motor* motor, float cmd, bool& zero_once);  // 单电机安全下发
 };

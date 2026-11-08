@@ -93,6 +93,14 @@ class Robot {
   hello_world::remote_control::DT7* rc_ = nullptr;
   LifeState life_state_ = LifeState::kDead;
   Chassis::WorkingMode working_mode_ = Chassis::WorkingMode::kStandby;
+  uint32_t state_enter_tick_ = 0;  // 进入当前生命状态的时刻(ms)
+  bool mode_armed_ = false;        // 上电后需先回待机档才允许其他模式
+
+  void updatePwrState();       // 生命状态迁移
+  void runOnDead();            // Dead 态周期动作
+  void runOnResurrection();    // Resurrection 态周期动作
+  void runOnWorking();         // Working 态周期动作
+  void updateWorkingMode();    // 遥控入口保护与拨杆映射
 };
 
 }  // namespace robot

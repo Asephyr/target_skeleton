@@ -95,6 +95,9 @@ void Chassis::reset() {
   zero_once_left_ = true;  // 复位后首帧先发零
   zero_once_right_ = true;
   zero_once_rotate_ = true;
+  rc_lv_ = 0.0f;           // 清零遥控输入
+  rc_lh_ = 0.0f;
+  rc_rh_ = 0.0f;
 }
 
 void Chassis::registerMotorLeft(hw_motor::Motor* motor) {
@@ -110,6 +113,12 @@ void Chassis::registerMotorRotate(hw_motor::Motor* motor) {
 }
 
 void Chassis::registerImu(hello_world::imu::Imu* imu) { imu_ = imu; }
+
+void Chassis::setRcInput(float lv, float lh, float rh) {
+  rc_lv_ = lv;  // 左摇杆纵向
+  rc_lh_ = lh;  // 左摇杆横向
+  rc_rh_ = rh;  // 右摇杆横向
+}
 
 void Chassis::setWorkingMode(WorkingMode mode) {
   if (working_mode_ == mode) {
